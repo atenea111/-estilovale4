@@ -30,6 +30,7 @@ interface Product {
   precio: number
   descripcion: string
   imagen: string
+  video?: string
   stock: boolean
   categorias: string[]
 }
@@ -57,6 +58,7 @@ export default function ProductosAdmin() {
     precio: "",
     descripcion: "",
     imagen: "",
+    video: "",
     stock: true,
     categorias: [] as string[],
   })
@@ -64,6 +66,9 @@ export default function ProductosAdmin() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [videoPreview, setVideoPreview] = useState<string | null>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchProducts()
@@ -114,11 +119,14 @@ export default function ProductosAdmin() {
       precio: "",
       descripcion: "",
       imagen: "",
+      video: "",
       stock: true,
       categorias: [],
     })
     setImageFile(null)
     setImagePreview(null)
+    setVideoFile(null)
+    setVideoPreview(null)
     setIsAddDialogOpen(true)
   }
 
@@ -129,10 +137,12 @@ export default function ProductosAdmin() {
       precio: product.precio.toString(),
       descripcion: product.descripcion,
       imagen: product.imagen,
+      video: product.video || "",
       stock: product.stock,
       categorias: product.categorias || [],
     })
     setImagePreview(product.imagen)
+    setVideoPreview(product.video || null)
     setIsAddDialogOpen(true)
   }
 
@@ -158,6 +168,16 @@ export default function ProductosAdmin() {
           await deleteObject(imageRef)
         } catch (error) {
           console.error("Error deleting image:", error)
+        }
+      }
+
+      // Delete video from Storage if it exists
+      if (productToDelete.video) {
+        try {
+          const videoRef = ref(storage, `productos/${productToDelete.id}/video`)
+          await deleteObject(videoRef)
+        } catch (error) {
+          console.error("Error deleting video:", error)
         }
       }
 
@@ -187,6 +207,20 @@ export default function ProductosAdmin() {
     reader.readAsDataURL(file)
   }
 
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setVideoFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setVideoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleCategoryToggle = (categoryId: string) => {
     setFormData((prev) => {
       const categorias = prev.categorias.includes(categoryId)
@@ -210,13 +244,22 @@ export default function ProductosAdmin() {
       const { db, storage } = await initializeFirebase()
 
       let imageUrl = formData.imagen
+      let videoUrl = formData.video
+
+      const productId = selectedProduct?.id || `new_${Date.now()}`
 
       // Upload image if a new one was selected
       if (imageFile) {
-        const productId = selectedProduct?.id || `new_${Date.now()}`
         const storageRef = ref(storage, `productos/${productId}`)
         await uploadBytes(storageRef, imageFile)
         imageUrl = await getDownloadURL(storageRef)
+      }
+
+      // Upload video if a new one was selected
+      if (videoFile) {
+        const videoRef = ref(storage, `productos/${productId}/video`)
+        await uploadBytes(videoRef, videoFile)
+        videoUrl = await getDownloadURL(videoRef)
       }
 
       const productData = {
@@ -224,6 +267,7 @@ export default function ProductosAdmin() {
         precio: Number.parseFloat(formData.precio),
         descripcion: formData.descripcion,
         imagen: imageUrl,
+        video: videoUrl,
         stock: formData.stock,
         categorias: formData.categorias,
       }
@@ -256,6 +300,20 @@ export default function ProductosAdmin() {
           productData.imagen = finalImageUrl
         }
 
+        // If we uploaded a video with a temporary ID, update the storage reference
+        if (videoFile && videoUrl.includes("new_")) {
+          const videoRef = ref(storage, `productos/${docRef.id}/video`)
+          await uploadBytes(videoRef, videoFile)
+          const finalVideoUrl = await getDownloadURL(videoRef)
+
+          // Update the product with the final video URL
+          await updateDoc(doc(db, "productos", docRef.id), {
+            video: finalVideoUrl,
+          })
+
+          productData.video = finalVideoUrl
+        }
+
         // Update local state
         setProducts([...products, { ...productData, id: docRef.id } as Product])
       }
@@ -264,6 +322,8 @@ export default function ProductosAdmin() {
       setSelectedProduct(null)
       setImageFile(null)
       setImagePreview(null)
+      setVideoFile(null)
+      setVideoPreview(null)
     } catch (error) {
       console.error("Error saving product:", error)
       alert("Error al guardar el producto. Intente nuevamente.")
@@ -502,6 +562,52 @@ export default function ProductosAdmin() {
                       </Button>
                     )}
                     <p className="text-xs text-gray-500 mt-1">Formatos recomendados: JPG, PNG. Tamaño máximo: 5MB.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-right">Video</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="h-24 w-24 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                    {videoPreview ? (
+                      <video
+                        src={videoPreview}
+                        controls
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <ImagePlus className="h-8 w-8 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      ref={videoInputRef}
+                      onChange={handleVideoChange}
+                      accept="video/*"
+                      className="hidden"
+                    />
+                    <Button type="button" variant="outline" onClick={() => videoInputRef.current?.click()}>
+                      Seleccionar video
+                    </Button>
+                    {videoPreview && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="ml-2 text-red-600 hover:text-red-800"
+                        onClick={() => {
+                          setVideoPreview(null)
+                          setVideoFile(null)
+                          if (videoInputRef.current) videoInputRef.current.value = ""
+                        }}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Eliminar
+                      </Button>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">Formatos recomendados: MP4. Tamaño máximo: 10MB.</p>
                   </div>
                 </div>
               </div>
