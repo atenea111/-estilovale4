@@ -15,6 +15,7 @@ interface Product {
   precio: number
   descripcion: string
   imagen: string
+  video?: string
   stock: boolean
   categorias: string[]
 }
@@ -35,6 +36,7 @@ export default function ProductoDetalle() {
   const [quantity, setQuantity] = useState(1)
   const [cartCount, setCartCount] = useState(0)
   const [rotation, setRotation] = useState(0)
+  const [currentMediaType, setCurrentMediaType] = useState<'image' | 'video'>('image')
 
   const imageRef = useRef<HTMLImageElement>(null)
 
@@ -57,6 +59,8 @@ export default function ProductoDetalle() {
           ...productSnapshot.data(),
         } as Product
 
+        console.log("Datos del producto recuperados:", productData)
+
         // Fetch categories
         const categoriesCollection = collection(db, "categorias")
         const categoriesSnapshot = await getDocs(categoriesCollection)
@@ -67,6 +71,13 @@ export default function ProductoDetalle() {
 
         setProduct(productData)
         setCategories(categoriesData)
+
+        // Set initial media type
+        if (productData.video && !productData.imagen) {
+          setCurrentMediaType('video')
+        } else {
+          setCurrentMediaType('image')
+        }
 
         // Get cart count from localStorage
         const cart = JSON.parse(localStorage.getItem("cart") || "[]")
@@ -195,26 +206,64 @@ export default function ProductoDetalle() {
       <div className="container mx-auto px-4 py-6">
         <Card className="bg-white overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
-            {/* Product Image */}
+            {/* Product Image/Video */}
             <div className="flex flex-col items-center">
               <div className="relative w-full h-80 md:h-96 bg-white rounded-lg overflow-hidden transition-all duration-300">
-                <img
-                  ref={imageRef}
-                  src={product.imagen || "/placeholder.svg?height=400&width=400"}
-                  alt={product.nombre}
-                  className="w-full h-full object-contain transition-transform duration-500"
-                  style={{ transformOrigin: "center" }}
-                />
-                <Button
-                  onClick={rotateImage}
-                  size="icon"
-                  className="absolute bottom-4 right-4 bg-black/70 hover:bg-black text-white rounded-full"
-                  title="Rotar imagen"
-                >
-                  <RotateCw className="h-4 w-4" />
-                </Button>
+                {currentMediaType === 'video' && product.video ? (
+                  <video
+                    src={product.video}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                ) : currentMediaType === 'image' && product.imagen ? (
+                  <img
+                    ref={imageRef}
+                    src={product.imagen || "/placeholder.svg?height=400&width=400"}
+                    alt={product.nombre}
+                    className="w-full h-full object-contain transition-transform duration-500"
+                    style={{ transformOrigin: "center" }}
+                  />
+                ) : (
+                  <img
+                    src="/placeholder.svg?height=400&width=400"
+                    alt="Placeholder"
+                    className="w-full h-full object-contain"
+                  />
+                )}
+                {currentMediaType === 'image' && product.imagen && (
+                  <Button
+                    onClick={rotateImage}
+                    size="icon"
+                    className="absolute bottom-4 right-4 bg-black/70 hover:bg-black text-white rounded-full"
+                    title="Rotar imagen"
+                  >
+                    <RotateCw className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              <p className="text-sm text-gray-500 mt-2">Haz clic en el botón para rotar la imagen</p>
+              {product.imagen && !product.video && (
+                <p className="text-sm text-gray-500 mt-2">Haz clic en el botón para rotar la imagen</p>
+              )}
+              {(product.imagen || product.video) && (
+                <div className="flex space-x-2 mt-4">
+                  {product.imagen && (
+                    <Button
+                      variant={currentMediaType === 'image' ? 'default' : 'outline'}
+                      onClick={() => setCurrentMediaType('image')}
+                    >
+                      Imagen
+                    </Button>
+                  )}
+                  {product.video && (
+                    <Button
+                      variant={currentMediaType === 'video' ? 'default' : 'outline'}
+                      onClick={() => setCurrentMediaType('video')}
+                    >
+                      Video
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Product Info */}
