@@ -17,6 +17,8 @@ interface Product {
   imagen: string
   video?: string
   stock: boolean
+  cantidadStock: number
+  costoEnvio: number
   categorias: string[]
 }
 
@@ -278,7 +280,10 @@ export default function ProductoDetalle() {
                 ))}
               </div>
 
-              <p className="text-3xl font-bold text-black mb-6">${product.precio.toLocaleString("es-AR")}</p>
+              <p className="text-3xl font-bold text-black mb-2">${product.precio.toLocaleString("es-AR")}</p>
+              {product.costoEnvio > 0 && (
+                <p className="text-lg text-gray-600 mb-6">Costo de envío: ${product.costoEnvio.toLocaleString("es-AR")}</p>
+              )}
 
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-2">Descripción</h3>
@@ -287,13 +292,20 @@ export default function ProductoDetalle() {
 
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-2">Disponibilidad</h3>
-                <span
-                  className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                    product.stock ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {product.stock ? "En stock" : "Agotado"}
-                </span>
+                <div className="flex items-center space-x-4">
+                  <span
+                    className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                      product.stock ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {product.stock ? "En stock" : "Agotado"}
+                  </span>
+                  {product.stock && (
+                    <span className="text-sm text-gray-600">
+                      {product.cantidadStock || 0} unidades disponibles
+                    </span>
+                  )}
+                </div>
               </div>
 
               {product.stock && (

@@ -32,6 +32,8 @@ interface Product {
   imagen: string
   video?: string
   stock: boolean
+  cantidadStock: number
+  costoEnvio: number
   categorias: string[]
 }
 
@@ -60,6 +62,8 @@ export default function ProductosAdmin() {
     imagen: "",
     video: "",
     stock: true,
+    cantidadStock: "",
+    costoEnvio: "",
     categorias: [] as string[],
   })
 
@@ -121,6 +125,8 @@ export default function ProductosAdmin() {
       imagen: "",
       video: "",
       stock: true,
+      cantidadStock: "",
+      costoEnvio: "",
       categorias: [],
     })
     setImageFile(null)
@@ -139,6 +145,8 @@ export default function ProductosAdmin() {
       imagen: product.imagen,
       video: product.video || "",
       stock: product.stock,
+      cantidadStock: product.cantidadStock?.toString() || "",
+      costoEnvio: product.costoEnvio?.toString() || "",
       categorias: product.categorias || [],
     })
     setImagePreview(product.imagen)
@@ -234,7 +242,7 @@ export default function ProductosAdmin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.nombre || !formData.precio || !formData.descripcion) {
+    if (!formData.nombre || !formData.precio || !formData.descripcion || !formData.cantidadStock) {
       alert("Por favor complete todos los campos obligatorios")
       return
     }
@@ -269,6 +277,8 @@ export default function ProductosAdmin() {
         imagen: imageUrl,
         video: videoUrl,
         stock: formData.stock,
+        cantidadStock: Number.parseInt(formData.cantidadStock) || 0,
+        costoEnvio: Number.parseFloat(formData.costoEnvio) || 0,
         categorias: formData.categorias,
       }
 
@@ -395,6 +405,12 @@ export default function ProductosAdmin() {
                         Stock
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Cantidad
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Envío
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Categorías
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -428,6 +444,12 @@ export default function ProductosAdmin() {
                           >
                             {product.stock ? "En stock" : "Agotado"}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {product.cantidadStock || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          ${(product.costoEnvio || 0).toLocaleString("es-AR")}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {product.categorias
@@ -475,7 +497,7 @@ export default function ProductosAdmin() {
 
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="nombre" className="text-right">
                     Nombre *
@@ -502,6 +524,38 @@ export default function ProductosAdmin() {
                     min="0"
                     step="0.01"
                     required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cantidadStock" className="text-right">
+                    Stock *
+                  </Label>
+                  <Input
+                    id="cantidadStock"
+                    type="number"
+                    value={formData.cantidadStock}
+                    onChange={(e) => setFormData({ ...formData, cantidadStock: e.target.value })}
+                    placeholder="0"
+                    min="0"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="costoEnvio" className="text-right">
+                    Costo de Envío
+                  </Label>
+                  <Input
+                    id="costoEnvio"
+                    type="number"
+                    value={formData.costoEnvio}
+                    onChange={(e) => setFormData({ ...formData, costoEnvio: e.target.value })}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
                   />
                 </div>
               </div>

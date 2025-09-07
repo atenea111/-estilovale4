@@ -20,6 +20,8 @@ interface Product {
   descripcion: string
   imagen: string
   stock: boolean
+  cantidadStock: number
+  costoEnvio: number
   categorias: string[]
 }
 
@@ -360,13 +362,23 @@ function ProductCard({ product }: { product: Product }) {
         <Link href={`/producto/${product.id}`}>
           <h3 className="text-lg font-semibold text-black mb-2">{product.nombre}</h3>
         </Link>
-        <p className="text-black font-bold mb-3">${product.precio.toLocaleString("es-AR")}</p>
+        <p className="text-black font-bold mb-2">${product.precio.toLocaleString("es-AR")}</p>
+        {product.costoEnvio > 0 && (
+          <p className="text-sm text-gray-600 mb-2">Envío: ${product.costoEnvio.toLocaleString("es-AR")}</p>
+        )}
         <div className="flex justify-between items-center">
-          <span
-            className={`text-xs px-2 py-1 rounded ${product.stock ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-          >
-            {product.stock ? "En stock" : "Agotado"}
-          </span>
+          <div className="flex flex-col">
+            <span
+              className={`text-xs px-2 py-1 rounded ${product.stock ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+            >
+              {product.stock ? "En stock" : "Agotado"}
+            </span>
+            {product.stock && (
+              <span className="text-xs text-gray-500 mt-1">
+                {product.cantidadStock || 0} disponibles
+              </span>
+            )}
+          </div>
           <Button
             onClick={addToCart}
             disabled={!product.stock}
