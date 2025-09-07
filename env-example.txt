@@ -1,0 +1,46 @@
+# Configuración de MercadoPago - Archivo de Ejemplo
+# Copia este contenido a un archivo llamado .env.local en la raíz del proyecto
+
+# ===========================================
+# TOKENS DE MERCADOPAGO (REEMPLAZA CON TUS TOKENS REALES)
+# ===========================================
+
+# Para obtener estos tokens:
+# 1. Ve a https://www.mercadopago.com.ar/developers/panel/credentials
+# 2. Crea una aplicación nueva
+# 3. Copia el Access Token y Public Key
+
+NEXT_PUBLIC_MERCADOPAGO_ACCESS_TOKEN=TEST-1234567890abcdef1234567890abcdef-12345678-123456-123456-123456-1234567890ab
+NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY=TEST-1234567890abcdef1234567890abcdef-12345678-123456-123456-123456-1234567890ab
+
+# ===========================================
+# CONFIGURACIÓN DE URLS
+# ===========================================
+
+# Para desarrollo local
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+
+# Para producción (descomenta y cambia por tu dominio):
+# NEXT_PUBLIC_BASE_URL=https://tu-dominio.com
+
+# ===========================================
+# INSTRUCCIONES RÁPIDAS
+# ===========================================
+
+# 1. Crear archivo .env.local:
+#    - Copia este contenido
+#    - Pégalo en un archivo llamado .env.local
+#    - Reemplaza los tokens con los reales de MercadoPago
+
+# 2. Configurar webhook en MercadoPago:
+#    - URL: http://localhost:3000/api/payment/webhook
+#    - Eventos: payment
+
+# 3. Reiniciar servidor:
+#    - Detener: Ctrl+C
+#    - Iniciar: npm run dev
+
+# 4. Probar:
+#    - Ir a http://localhost:3000/carrito
+#    - Agregar productos
+#    - Hacer clic en "Finalizar compra con MercadoPago"

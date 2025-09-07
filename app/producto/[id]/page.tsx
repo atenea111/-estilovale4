@@ -115,6 +115,7 @@ export default function ProductoDetalle() {
         precio: product.precio,
         imagen: product.imagen,
         quantity: quantity,
+        costoEnvio: product.costoEnvio || 0,
       })
     }
 

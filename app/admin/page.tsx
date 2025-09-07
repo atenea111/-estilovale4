@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { BarChart3, Loader2 } from "lucide-react"
+import { BarChart3, Loader2, Package, TrendingDown } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { initializeFirebase } from "@/lib/firebase"
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore"
 import { AdminLayout } from "@/components/admin-layout"
 import { useRouter } from "next/navigation"
+import { StockService } from "@/lib/stock-service"
 
 interface SalesData {
   id: string
@@ -27,6 +28,13 @@ export default function AdminDashboard() {
   const [totalRevenue, setTotalRevenue] = useState(0)
   const [recentSales, setRecentSales] = useState<SalesData[]>([])
   const [monthlySales, setMonthlySales] = useState<Record<string, { sales: number; revenue: number }>>({})
+  const [stockStats, setStockStats] = useState({
+    totalProducts: 0,
+    productsInStock: 0,
+    productsOutOfStock: 0,
+    lowStockProducts: 0,
+    totalStockValue: 0
+  })
 
   useEffect(() => {
     fetchDashboardData()
@@ -116,6 +124,10 @@ export default function AdminDashboard() {
       })
 
       setMonthlySales(monthlyData)
+
+      // Obtener estadísticas de stock
+      const stockStatsData = await StockService.getStockStats()
+      setStockStats(stockStatsData)
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
     } finally {
@@ -144,7 +156,7 @@ export default function AdminDashboard() {
     <AdminLayout activeSection="dashboard">
       <div className="space-y-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-500">Total de Ventas</CardTitle>
@@ -171,17 +183,37 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalProducts}</div>
-              <p className="text-xs text-gray-500">Productos disponibles en la tienda</p>
+              <p className="text-xs text-gray-500">Productos disponibles</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Total de Categorías</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">En Stock</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalCategories}</div>
-              <p className="text-xs text-gray-500">Categorías disponibles en la tienda</p>
+              <div className="text-2xl font-bold text-green-600">{stockStats.productsInStock}</div>
+              <p className="text-xs text-gray-500">Productos disponibles</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500">Stock Bajo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{stockStats.lowStockProducts}</div>
+              <p className="text-xs text-gray-500">Necesitan reposición</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500">Valor en Stock</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">${stockStats.totalStockValue.toLocaleString("es-AR")}</div>
+              <p className="text-xs text-gray-500">Valor del inventario</p>
             </CardContent>
           </Card>
         </div>
@@ -288,6 +320,38 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Stock Alerts */}
+        {stockStats.lowStockProducts > 0 && (
+          <Card className="border-yellow-200 bg-yellow-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <TrendingDown className="h-5 w-5 text-yellow-600 mr-2" />
+                  <CardTitle className="text-yellow-800">Alertas de Stock</CardTitle>
+                </div>
+                <Button variant="outline" onClick={() => router.push("/admin/stock")} className="hidden sm:flex">
+                  Gestionar Stock
+                </Button>
+              </div>
+              <CardDescription className="text-yellow-700">
+                Tienes {stockStats.lowStockProducts} productos con stock bajo que necesitan reposición
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-yellow-700">
+                  <p>• {stockStats.lowStockProducts} productos con stock ≤ 5 unidades</p>
+                  <p>• {stockStats.productsOutOfStock} productos sin stock</p>
+                </div>
+                <Button onClick={() => router.push("/admin/stock")} className="bg-yellow-600 hover:bg-yellow-700">
+                  <Package className="h-4 w-4 mr-2" />
+                  Ver Stock
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AdminLayout>
   )

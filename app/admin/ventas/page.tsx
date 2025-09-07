@@ -106,6 +106,42 @@ export default function VentasAdmin() {
     setIsDetailsDialogOpen(true)
   }
 
+  // Función para obtener el estado en español y los estilos
+  const getEstadoDisplay = (estado: string) => {
+    switch (estado.toLowerCase()) {
+      case 'approved':
+        return {
+          text: 'Pago Aprobado',
+          className: 'bg-green-100 text-green-800'
+        }
+      case 'pending':
+        return {
+          text: 'Pendiente',
+          className: 'bg-yellow-100 text-yellow-800'
+        }
+      case 'rejected':
+        return {
+          text: 'Pago Rechazado',
+          className: 'bg-red-100 text-red-800'
+        }
+      case 'completado':
+        return {
+          text: 'Completado',
+          className: 'bg-green-100 text-green-800'
+        }
+      case 'pendiente':
+        return {
+          text: 'Pendiente',
+          className: 'bg-yellow-100 text-yellow-800'
+        }
+      default:
+        return {
+          text: estado,
+          className: 'bg-gray-100 text-gray-800'
+        }
+    }
+  }
+
   // Filter sales based on search term
   const filteredSales = sales.filter(
     (sale) =>
@@ -188,13 +224,9 @@ export default function VentasAdmin() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              sale.estado === "Completado"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-yellow-100 text-yellow-800"
-                            }`}
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getEstadoDisplay(sale.estado).className}`}
                           >
-                            {sale.estado}
+                            {getEstadoDisplay(sale.estado).text}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -243,12 +275,10 @@ export default function VentasAdmin() {
                 <p className="text-sm font-medium text-gray-500">Estado</p>
                 <span
                   className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    selectedSale?.estado === "Completado"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-yellow-100 text-yellow-800"
+                    selectedSale ? getEstadoDisplay(selectedSale.estado).className : ''
                   }`}
                 >
-                  {selectedSale?.estado}
+                  {selectedSale ? getEstadoDisplay(selectedSale.estado).text : ''}
                 </span>
               </div>
             </div>

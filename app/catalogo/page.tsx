@@ -333,6 +333,7 @@ function ProductCard({ product }: { product: Product }) {
         precio: product.precio,
         imagen: product.imagen,
         quantity: 1,
+        costoEnvio: product.costoEnvio || 0,
       })
     }
 

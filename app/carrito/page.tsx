@@ -3,32 +3,50 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, Instagram, Minus, Plus, ShoppingBag, Trash2, User } from "lucide-react"
+import { ChevronLeft, Instagram, Minus, Plus, ShoppingBag, Trash2, User, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { initializeFirebase } from "@/lib/firebase"
-import { collection, addDoc, serverTimestamp } from "firebase/firestore"
-
-interface CartItem {
-  id: string
-  nombre: string
-  precio: number
-  imagen: string
-  quantity: number
-}
+import { PaymentService } from "@/lib/payment-service"
+import type { CartItem, StockValidationError } from "@/lib/types"
 
 export default function Carrito() {
   const router = useRouter()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [stockErrors, setStockErrors] = useState<StockValidationError[]>([])
+  const [isValidatingStock, setIsValidatingStock] = useState(false)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   useEffect(() => {
     // Get cart items from localStorage
     const cart = JSON.parse(localStorage.getItem("cart") || "[]")
     setCartItems(cart)
     setLoading(false)
+    
+    // Validar stock al cargar el carrito
+    if (cart.length > 0) {
+      validateStock()
+    }
   }, [])
+
+  const validateStock = async () => {
+    if (cartItems.length === 0) return
+    
+    setIsValidatingStock(true)
+    try {
+      const validation = await PaymentService.validateStock(
+        cartItems.map(item => ({ id: item.id, cantidad: item.quantity }))
+      )
+      setStockErrors(validation.errors)
+    } catch (error) {
+      console.error('Error validating stock:', error)
+    } finally {
+      setIsValidatingStock(false)
+    }
+  }
 
   const updateQuantity = (id: string, newQuantity: number) => {
     if (newQuantity < 1) return
@@ -37,17 +55,28 @@ export default function Carrito() {
 
     setCartItems(updatedCart)
     localStorage.setItem("cart", JSON.stringify(updatedCart))
+    
+    // Validar stock después del cambio
+    setTimeout(() => {
+      validateStock()
+    }, 100)
   }
 
   const removeItem = (id: string) => {
     const updatedCart = cartItems.filter((item) => item.id !== id)
     setCartItems(updatedCart)
     localStorage.setItem("cart", JSON.stringify(updatedCart))
+    
+    // Validar stock después de eliminar
+    setTimeout(() => {
+      validateStock()
+    }, 100)
   }
 
   const clearCart = () => {
     setCartItems([])
     localStorage.setItem("cart", JSON.stringify([]))
+    setStockErrors([])
   }
 
   const getTotalItems = () => {
@@ -58,52 +87,93 @@ export default function Carrito() {
     return cartItems.reduce((total, item) => total + item.precio * item.quantity, 0)
   }
 
+  const getTotalShipping = () => {
+    return cartItems.reduce((total, item) => total + (item.costoEnvio || 0) * item.quantity, 0)
+  }
+
+  const getGrandTotal = () => {
+    return getTotalPrice() + getTotalShipping()
+  }
+
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
       alert("El carrito está vacío")
       return
     }
 
+    // Validar stock antes de proceder
+    if (stockErrors.length > 0) {
+      alert("Hay productos sin stock suficiente. Por favor revisa tu carrito.")
+      return
+    }
+
+    setIsProcessingPayment(true)
+    console.log("Iniciando checkout con MercadoPago...")
+    console.log("Productos en carrito:", cartItems)
+
     try {
-      // Register the sale in Firebase
-      const { db } = await initializeFirebase()
+      // Crear preferencia de pago
+      const paymentItems = cartItems.map(item => ({
+        id: item.id,
+        title: item.nombre,
+        quantity: item.quantity,
+        unit_price: item.precio + (item.costoEnvio || 0), // Incluir costo de envío en el precio unitario
+        currency_id: 'ARS' as const
+      }))
 
-      const saleData = {
-        fecha: serverTimestamp(),
-        cliente: "Cliente WhatsApp",
-        total: getTotalPrice(),
-        productos: cartItems.map((item) => ({
-          id: item.id,
-          nombre: item.nombre,
-          precio: item.precio,
-          cantidad: item.quantity,
-          subtotal: item.precio * item.quantity,
-        })),
-        estado: "Pendiente",
-      }
+      console.log("Items para MercadoPago:", paymentItems)
 
-      await addDoc(collection(db, "ventas"), saleData)
-
-      // Format the order message for WhatsApp
-      let message = "Hola! Quiero realizar el siguiente pedido:\n\n"
-
-      cartItems.forEach((item) => {
-        message += `• ${item.quantity}x ${item.nombre} - $${(item.precio * item.quantity).toLocaleString("es-AR")}\n`
+      const preference = await PaymentService.createPaymentPreference({
+        items: paymentItems,
+        payer: {
+          email: 'cliente@example.com', // En una implementación real, esto vendría de un formulario
+          name: 'Cliente',
+          surname: 'EstiloVale4'
+        },
+        auto_return: 'approved',
+        external_reference: `sale_${Date.now()}`
       })
 
-      message += `\nTotal: $${getTotalPrice().toLocaleString("es-AR")}`
+      console.log("Respuesta de MercadoPago:", preference)
 
-      // Encode the message for WhatsApp URL
-      const encodedMessage = encodeURIComponent(message)
+      if (preference.success && preference.paymentId) {
+        // Registrar la venta como pendiente
+        const saleId = await PaymentService.registerSale({
+          cliente: 'Cliente EstiloVale4',
+          email: 'cliente@example.com',
+          total: getTotalPrice(),
+          costoEnvioTotal: getTotalShipping(),
+          productos: cartItems.map(item => ({
+            id: item.id,
+            nombre: item.nombre,
+            precio: item.precio,
+            cantidad: item.quantity,
+            subtotal: item.precio * item.quantity,
+            costoEnvio: item.costoEnvio || 0
+          })),
+          estado: 'pending',
+          paymentId: preference.paymentId, // Usar el paymentId de la respuesta
+          externalReference: `sale_${Date.now()}`
+        })
 
-      // Clear the cart
-      clearCart()
+        console.log("Venta registrada con ID:", saleId)
 
-      // Open WhatsApp with the pre-filled message - Updated phone number
-      window.open(`https://wa.me/5493415496064?text=${encodedMessage}`, "_blank")
+        if (saleId) {
+          // Redirigir a MercadoPago usando el paymentId como pref_id
+          console.log("Redirigiendo a MercadoPago...")
+          window.location.href = `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=${preference.paymentId}`
+        } else {
+          alert("Error al registrar la venta. Intenta nuevamente.")
+        }
+      } else {
+        console.error("Error en preferencia de MercadoPago:", preference.error)
+        alert(`Error al crear el pago: ${preference.error}`)
+      }
     } catch (error) {
-      console.error("Error registering sale:", error)
-      alert("Hubo un error al procesar tu pedido. Por favor intenta nuevamente.")
+      console.error("Error en checkout:", error)
+      alert("Error al procesar el pago. Intenta nuevamente.")
+    } finally {
+      setIsProcessingPayment(false)
     }
   }
 
@@ -272,8 +342,13 @@ export default function Carrito() {
 
                   <div className="space-y-4">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal</span>
+                      <span className="text-gray-600">Subtotal productos</span>
                       <span className="font-medium text-black">${getTotalPrice().toLocaleString("es-AR")}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Costo de envío</span>
+                      <span className="font-medium text-black">${getTotalShipping().toLocaleString("es-AR")}</span>
                     </div>
 
                     <div className="flex justify-between">
@@ -285,16 +360,37 @@ export default function Carrito() {
 
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total</span>
-                      <span>${getTotalPrice().toLocaleString("es-AR")}</span>
+                      <span>${getGrandTotal().toLocaleString("es-AR")}</span>
                     </div>
                   </div>
 
-                  <Button onClick={handleCheckout} className="w-full mt-6 bg-black text-white hover:bg-gray-800">
-                    Finalizar compra por WhatsApp
+                  {/* Mostrar errores de stock */}
+                  {stockErrors.length > 0 && (
+                    <Alert className="mt-4 border-red-200 bg-red-50">
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-800">
+                        <div className="font-semibold mb-2">Productos sin stock suficiente:</div>
+                        {stockErrors.map((error, index) => (
+                          <div key={index} className="text-sm">
+                            • {error.productName}: solicitado {error.requested}, disponible {error.available}
+                          </div>
+                        ))}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button 
+                    onClick={handleCheckout} 
+                    className="w-full mt-6 bg-black text-white hover:bg-gray-800"
+                    disabled={stockErrors.length > 0 || isValidatingStock || isProcessingPayment}
+                  >
+                    {isProcessingPayment ? 'Procesando pago...' : 
+                     isValidatingStock ? 'Validando stock...' : 
+                     'Finalizar compra con MercadoPago'}
                   </Button>
 
                   <p className="text-xs text-gray-500 mt-4 text-center">
-                    Al finalizar la compra, serás redirigido a WhatsApp para completar tu pedido.
+                    Al finalizar la compra, serás redirigido a MercadoPago para completar tu pago de forma segura.
                   </p>
                 </CardContent>
               </Card>
@@ -355,3 +451,4 @@ export default function Carrito() {
     </div>
   )
 }
+
