@@ -2,7 +2,7 @@
 // Sin dependencias del SDK de MercadoPago que causan problemas
 
 import { initializeFirebase } from './firebase'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, query, where, getDocs, setDoc } from 'firebase/firestore'
 import type { 
   PaymentItem, 
   PaymentPreference, 
@@ -250,8 +250,39 @@ export class PaymentService {
 
       const paymentId = notificationData.data.id
       
-      // Buscar la venta por paymentId
+      // Verificar si ya procesamos este webhook específico
       const { db } = await initializeFirebase()
+      const webhookLogRef = collection(db, 'webhook_logs')
+      const webhookQuery = query(webhookLogRef, where('paymentId', '==', paymentId))
+      const webhookSnapshot = await getDocs(webhookQuery)
+      
+      if (!webhookSnapshot.empty) {
+        console.log(`⚠️ Webhook ya procesado para payment ${paymentId}, ignorando duplicado`)
+        
+        // Confirmar notificación a MercadoPago para duplicados también
+        await this.confirmNotificationToMercadoPago(paymentId)
+        
+        return true
+      }
+
+      // Crear un registro temporal para evitar race conditions
+      const tempLogRef = doc(webhookLogRef)
+      await setDoc(tempLogRef, {
+        paymentId: paymentId,
+        status: 'processing',
+        processedAt: serverTimestamp(),
+        tempLock: true
+      })
+      
+      // Verificar nuevamente después de crear el lock temporal
+      const webhookSnapshot2 = await getDocs(webhookQuery)
+      if (webhookSnapshot2.size > 1) {
+        console.log(`⚠️ Webhook duplicado detectado durante procesamiento para payment ${paymentId}, ignorando`)
+        await this.confirmNotificationToMercadoPago(paymentId)
+        return true
+      }
+      
+      // Buscar la venta por paymentId
       const salesRef = collection(db, 'ventas')
       const q = query(salesRef, where('paymentId', '==', paymentId))
       const querySnapshot = await getDocs(q)
@@ -264,7 +295,7 @@ export class PaymentService {
         
         // Buscar todas las ventas pendientes para encontrar la que corresponde
         console.log('Buscando en ventas pendientes...')
-        const pendingSalesQuery = query(salesRef, where('estado', '==', 'pending'))
+        const pendingSalesQuery = query(salesRef, where('estadoPago', '==', 'pending'))
         const pendingSalesSnapshot = await getDocs(pendingSalesQuery)
         
         console.log(`Encontradas ${pendingSalesSnapshot.size} ventas pendientes`)
@@ -303,7 +334,8 @@ export class PaymentService {
       const sale = { id: saleDoc.id, ...saleDoc.data() } as Sale
       
       console.log('Venta encontrada:', sale.id)
-      console.log('Estado actual:', sale.estado)
+      console.log('Estado actual de pago:', sale.estadoPago)
+      console.log('Estado actual de envío:', sale.estadoEnvio)
       
       return await this.processPayment(sale, paymentId, db)
     } catch (error) {
@@ -328,12 +360,13 @@ export class PaymentService {
       console.log('Estado del pago desde MercadoPago:', paymentStatus)
       
       if (paymentStatus === 'approved') {
-        // Actualizar estado de la venta
+        // Actualizar estado de pago y estado de envío
         await updateDoc(doc(db, 'ventas', sale.id), {
-          estado: 'approved',
-          fechaAprobacion: new Date(),
+          estadoPago: 'approved',
+          estadoEnvio: 'pendiente_envio', // Estado inicial de envío
+          fechaAprobacion: serverTimestamp(),
           webhookProcessed: true,
-          webhookProcessedAt: new Date()
+          webhookProcessedAt: serverTimestamp()
         })
 
         // Actualizar stock de productos
@@ -341,29 +374,85 @@ export class PaymentService {
           sale.productos.map((p: any) => ({ id: p.id, cantidad: p.cantidad }))
         )
 
-        console.log(`✅ Payment ${paymentId} approved for sale ${sale.id} - Stock updated`)
+        // Actualizar el log del webhook como completado
+        const webhookLogQuery = query(collection(db, 'webhook_logs'), where('paymentId', '==', paymentId))
+        const webhookLogSnapshot = await getDocs(webhookLogQuery)
+        if (!webhookLogSnapshot.empty) {
+          // Actualizar todos los registros de este paymentId
+          for (const webhookLogDoc of webhookLogSnapshot.docs) {
+            await updateDoc(doc(db, 'webhook_logs', webhookLogDoc.id), {
+              status: 'completed',
+              completedAt: serverTimestamp(),
+              saleId: sale.id
+            })
+          }
+        }
+
+        console.log(`✅ Payment ${paymentId} approved for sale ${sale.id} - Stock updated, Estado envío: pendiente_envio`)
+        
+        // Confirmar notificación a MercadoPago
+        await this.confirmNotificationToMercadoPago(paymentId)
+        
         return true
       } else if (paymentStatus === 'rejected') {
-        // Actualizar estado de la venta
+        // Actualizar estado de pago
         await updateDoc(doc(db, 'ventas', sale.id), {
-          estado: 'rejected',
-          fechaRechazo: new Date(),
+          estadoPago: 'rejected',
+          estadoEnvio: 'cancelled', // Cancelar envío si el pago es rechazado
+          fechaRechazo: serverTimestamp(),
           webhookProcessed: true,
-          webhookProcessedAt: new Date()
+          webhookProcessedAt: serverTimestamp()
         })
+
+        // Actualizar el log del webhook como completado
+        const webhookLogQuery = query(collection(db, 'webhook_logs'), where('paymentId', '==', paymentId))
+        const webhookLogSnapshot = await getDocs(webhookLogQuery)
+        if (!webhookLogSnapshot.empty) {
+          // Actualizar todos los registros de este paymentId
+          for (const webhookLogDoc of webhookLogSnapshot.docs) {
+            await updateDoc(doc(db, 'webhook_logs', webhookLogDoc.id), {
+              status: 'completed',
+              completedAt: serverTimestamp(),
+              saleId: sale.id
+            })
+          }
+        }
 
         console.log(`❌ Payment ${paymentId} rejected for sale ${sale.id}`)
+        
+        // Confirmar notificación a MercadoPago
+        await this.confirmNotificationToMercadoPago(paymentId)
+        
         return true
       } else if (paymentStatus === 'pending') {
-        // Actualizar estado de la venta
+        // Actualizar estado de pago
         await updateDoc(doc(db, 'ventas', sale.id), {
-          estado: 'pending',
-          fechaPendiente: new Date(),
+          estadoPago: 'pending',
+          estadoEnvio: 'pendiente_envio', // Mantener pendiente hasta que se apruebe el pago
+          fechaPendiente: serverTimestamp(),
           webhookProcessed: true,
-          webhookProcessedAt: new Date()
+          webhookProcessedAt: serverTimestamp()
         })
 
+        // Actualizar el log del webhook como completado
+        const webhookLogQuery = query(collection(db, 'webhook_logs'), where('paymentId', '==', paymentId))
+        const webhookLogSnapshot = await getDocs(webhookLogQuery)
+        if (!webhookLogSnapshot.empty) {
+          // Actualizar todos los registros de este paymentId
+          for (const webhookLogDoc of webhookLogSnapshot.docs) {
+            await updateDoc(doc(db, 'webhook_logs', webhookLogDoc.id), {
+              status: 'completed',
+              completedAt: serverTimestamp(),
+              saleId: sale.id
+            })
+          }
+        }
+
         console.log(`⏳ Payment ${paymentId} pending for sale ${sale.id}`)
+        
+        // Confirmar notificación a MercadoPago
+        await this.confirmNotificationToMercadoPago(paymentId)
+        
         return true
       }
 
@@ -401,6 +490,204 @@ export class PaymentService {
     } catch (error) {
       console.error('Error obteniendo estado del pago:', error)
       return 'pending' // Por defecto, asumir pendiente si hay error
+    }
+  }
+
+  /**
+   * Actualiza el estado de un pedido
+   */
+  static async updateOrderStatus(
+    saleId: string, 
+    newStatus: 'en_preparacion' | 'listo_entrega' | 'en_camino' | 'entregado' | 'cancelled',
+    administrador?: string,
+    mensajeAdmin?: string
+  ): Promise<boolean> {
+    try {
+      const { db } = await initializeFirebase()
+      const saleRef = doc(db, 'ventas', saleId)
+      
+      const updateData: any = {
+        estadoEnvio: newStatus
+      }
+
+      // Agregar fecha específica según el estado
+      switch (newStatus) {
+        case 'en_preparacion':
+          updateData.fechaEnPreparacion = serverTimestamp()
+          break
+        case 'listo_entrega':
+          updateData.fechaListoEntrega = serverTimestamp()
+          break
+        case 'en_camino':
+          updateData.fechaEnCamino = serverTimestamp()
+          break
+        case 'entregado':
+          updateData.fechaEntregado = serverTimestamp()
+          break
+      }
+
+      // Agregar datos del administrador si se proporcionan
+      if (administrador) {
+        updateData.administrador = administrador
+      }
+      if (mensajeAdmin) {
+        updateData.mensajeAdmin = mensajeAdmin
+      }
+
+      await updateDoc(saleRef, updateData)
+      console.log(`Estado del pedido ${saleId} actualizado a: ${newStatus}`)
+      return true
+    } catch (error) {
+      console.error('Error actualizando estado del pedido:', error)
+      return false
+    }
+  }
+
+  /**
+   * Obtiene los detalles completos de una venta
+   */
+  static async getSaleDetails(saleId: string): Promise<Sale | null> {
+    try {
+      const { db } = await initializeFirebase()
+      const saleRef = doc(db, 'ventas', saleId)
+      const saleDoc = await getDoc(saleRef)
+      
+      if (saleDoc.exists()) {
+        const data = saleDoc.data()
+        return {
+          id: saleDoc.id,
+          fecha: data.fecha ? new Date(data.fecha.seconds * 1000) : new Date(),
+          cliente: data.cliente || '',
+          email: data.email || '',
+          telefono: data.telefono || '',
+          direccion: data.direccion || '',
+          opcionEntrega: data.opcionEntrega || 'domicilio',
+          horarioEntrega: data.horarioEntrega || '',
+          comentarios: data.comentarios || '',
+          total: data.total || 0,
+          costoEnvioTotal: data.costoEnvioTotal || 0,
+          productos: data.productos || [],
+          // Estados separados
+          estadoPago: data.estadoPago || 'pending',
+          estadoEnvio: data.estadoEnvio || 'pendiente_envio',
+          paymentId: data.paymentId,
+          externalReference: data.externalReference,
+          webhookProcessed: data.webhookProcessed || false,
+          webhookProcessedAt: data.webhookProcessedAt ? new Date(data.webhookProcessedAt.seconds * 1000) : undefined,
+          // Fechas de estados de pago
+          fechaAprobacion: data.fechaAprobacion ? new Date(data.fechaAprobacion.seconds * 1000) : undefined,
+          fechaRechazo: data.fechaRechazo ? new Date(data.fechaRechazo.seconds * 1000) : undefined,
+          fechaPendiente: data.fechaPendiente ? new Date(data.fechaPendiente.seconds * 1000) : undefined,
+          // Fechas de estados de envío
+          fechaEnPreparacion: data.fechaEnPreparacion ? new Date(data.fechaEnPreparacion.seconds * 1000) : undefined,
+          fechaListoEntrega: data.fechaListoEntrega ? new Date(data.fechaListoEntrega.seconds * 1000) : undefined,
+          fechaEnCamino: data.fechaEnCamino ? new Date(data.fechaEnCamino.seconds * 1000) : undefined,
+          fechaEntregado: data.fechaEntregado ? new Date(data.fechaEntregado.seconds * 1000) : undefined,
+          mensajeAdmin: data.mensajeAdmin || '',
+          administrador: data.administrador || ''
+        }
+      }
+      
+      return null
+    } catch (error) {
+      console.error('Error obteniendo detalles de la venta:', error)
+      return null
+    }
+  }
+
+  /**
+   * Obtiene todas las ventas con filtros opcionales
+   */
+  static async getAllSales(filters?: {
+    estado?: string
+    fechaDesde?: Date
+    fechaHasta?: Date
+  }): Promise<Sale[]> {
+    try {
+      const { db } = await initializeFirebase()
+      let salesQuery = query(collection(db, 'ventas'))
+      
+      // Aplicar filtros si se proporcionan
+      if (filters?.estado) {
+        // Filtrar por estado de envío por defecto, pero también permitir estado de pago
+        if (['en_preparacion', 'listo_entrega', 'en_camino', 'entregado', 'cancelled', 'pendiente_envio'].includes(filters.estado)) {
+          salesQuery = query(salesQuery, where('estadoEnvio', '==', filters.estado))
+        } else if (['pending', 'approved', 'rejected'].includes(filters.estado)) {
+          salesQuery = query(salesQuery, where('estadoPago', '==', filters.estado))
+        }
+      }
+      
+      const salesSnapshot = await getDocs(salesQuery)
+      const salesData = salesSnapshot.docs.map((doc) => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          fecha: data.fecha ? new Date(data.fecha.seconds * 1000) : new Date(),
+          cliente: data.cliente || '',
+          email: data.email || '',
+          telefono: data.telefono || '',
+          direccion: data.direccion || '',
+          opcionEntrega: data.opcionEntrega || 'domicilio',
+          horarioEntrega: data.horarioEntrega || '',
+          comentarios: data.comentarios || '',
+          total: data.total || 0,
+          costoEnvioTotal: data.costoEnvioTotal || 0,
+          productos: data.productos || [],
+          // Estados separados
+          estadoPago: data.estadoPago || 'pending',
+          estadoEnvio: data.estadoEnvio || 'pendiente_envio',
+          paymentId: data.paymentId,
+          externalReference: data.externalReference,
+          webhookProcessed: data.webhookProcessed || false,
+          webhookProcessedAt: data.webhookProcessedAt ? new Date(data.webhookProcessedAt.seconds * 1000) : undefined,
+          // Fechas de estados de pago
+          fechaAprobacion: data.fechaAprobacion ? new Date(data.fechaAprobacion.seconds * 1000) : undefined,
+          fechaRechazo: data.fechaRechazo ? new Date(data.fechaRechazo.seconds * 1000) : undefined,
+          fechaPendiente: data.fechaPendiente ? new Date(data.fechaPendiente.seconds * 1000) : undefined,
+          // Fechas de estados de envío
+          fechaEnPreparacion: data.fechaEnPreparacion ? new Date(data.fechaEnPreparacion.seconds * 1000) : undefined,
+          fechaListoEntrega: data.fechaListoEntrega ? new Date(data.fechaListoEntrega.seconds * 1000) : undefined,
+          fechaEnCamino: data.fechaEnCamino ? new Date(data.fechaEnCamino.seconds * 1000) : undefined,
+          fechaEntregado: data.fechaEntregado ? new Date(data.fechaEntregado.seconds * 1000) : undefined,
+          mensajeAdmin: data.mensajeAdmin || '',
+          administrador: data.administrador || ''
+        }
+      })
+
+      // Aplicar filtros de fecha si se proporcionan
+      let filteredSales = salesData
+      if (filters?.fechaDesde) {
+        filteredSales = filteredSales.filter(sale => sale.fecha >= filters.fechaDesde!)
+      }
+      if (filters?.fechaHasta) {
+        filteredSales = filteredSales.filter(sale => sale.fecha <= filters.fechaHasta!)
+      }
+
+      return filteredSales.sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
+    } catch (error) {
+      console.error('Error obteniendo ventas:', error)
+      return []
+    }
+  }
+
+  /**
+   * Confirma a MercadoPago que procesamos la notificación
+   */
+  private static async confirmNotificationToMercadoPago(paymentId: string): Promise<void> {
+    try {
+      // MercadoPago no requiere confirmación explícita, pero podemos loggear para debugging
+      console.log(`📤 Notificación confirmada a MercadoPago para payment ${paymentId}`)
+      
+      // En el futuro, si MercadoPago requiere confirmación explícita, se puede implementar aquí
+      // const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      //   method: 'GET',
+      //   headers: {
+      //     'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,
+      //     'Content-Type': 'application/json'
+      //   }
+      // })
+    } catch (error) {
+      console.error('Error confirming notification to MercadoPago:', error)
     }
   }
 }

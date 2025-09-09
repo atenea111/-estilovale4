@@ -1,16 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { CheckCircle, Instagram, ShoppingBag, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
-import { doc, getDoc, updateDoc } from "firebase/firestore"
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { PaymentService } from "@/lib/payment-service"
 
-export default function PaymentSuccess() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams()
   const paymentId = searchParams.get('payment_id')
   const status = searchParams.get('status')
@@ -45,7 +45,7 @@ export default function PaymentSuccess() {
           await updateDoc(doc(db, 'ventas', sale.id), {
             estado: 'approved',
             paymentId: paymentId,
-            fechaAprobacion: new Date()
+            fechaAprobacion: serverTimestamp()
           })
 
           // Actualizar stock de productos
@@ -272,5 +272,20 @@ export default function PaymentSuccess() {
         </div>
       </footer>
     </div>
+  )
+}
+
+export default function PaymentSuccess() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#F5D3EF] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto"></div>
+          <p className="mt-4 text-black font-medium">Cargando...</p>
+        </div>
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
   )
 }

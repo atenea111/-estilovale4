@@ -60,18 +60,41 @@ export async function POST(request: NextRequest) {
     
     if (success) {
       console.log('✅ WEBHOOK PROCESADO EXITOSAMENTE - Notificación confirmada a MercadoPago')
+      
+      // Respuesta específica para MercadoPago - HTTP 200 con datos mínimos
       return NextResponse.json({ 
-        success: true, 
-        message: 'Webhook processed successfully',
+        id: notificationData.data.id,
+        status: 'processed',
         timestamp: new Date().toISOString()
+      }, { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
       })
     } else {
       console.log('❌ Error al procesar notificación')
-      return NextResponse.json({ error: 'Failed to process notification' }, { status: 400 })
+      return NextResponse.json({ 
+        error: 'Failed to process notification',
+        id: notificationData.data.id 
+      }, { status: 400 })
     }
   } catch (error) {
     console.error('Webhook error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+    // Respuesta de error específica para MercadoPago
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      message: 'Webhook processing failed',
+      timestamp: new Date().toISOString()
+    }, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    })
   }
 }
 

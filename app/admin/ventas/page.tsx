@@ -1,11 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Search, Trash2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Loader2, Search, Trash2, Clock, Package, Truck, CheckCircle, X, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -14,26 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { initializeFirebase } from "@/lib/firebase"
-import { collection, getDocs, doc, deleteDoc, query, orderBy } from "firebase/firestore"
+import { PaymentService } from "@/lib/payment-service"
 import { AdminLayout } from "@/components/admin-layout"
-
-interface Sale {
-  id: string
-  fecha: Date
-  cliente: string
-  total: number
-  productos: {
-    id: string
-    nombre: string
-    precio: number
-    cantidad: number
-    subtotal: number
-  }[]
-  estado: string
-}
+import type { Sale } from "@/lib/types"
 
 export default function VentasAdmin() {
+  const router = useRouter()
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -42,30 +30,23 @@ export default function VentasAdmin() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSales()
+    
+    // Configurar polling para refrescar datos cada 30 segundos
+    const interval = setInterval(() => {
+      fetchSales()
+    }, 30000) // 30 segundos
+    
+    return () => clearInterval(interval)
   }, [])
 
   const fetchSales = async () => {
     try {
       setLoading(true)
-      const { db } = await initializeFirebase()
-
-      const salesQuery = query(collection(db, "ventas"), orderBy("fecha", "desc"))
-      const salesSnapshot = await getDocs(salesQuery)
-      const salesData = salesSnapshot.docs.map((doc) => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          fecha: data.fecha ? new Date(data.fecha.seconds * 1000) : new Date(),
-          cliente: data.cliente || "Cliente",
-          total: data.total || 0,
-          productos: data.productos || [],
-          estado: data.estado || "Completado",
-        }
-      })
-
+      const salesData = await PaymentService.getAllSales()
       setSales(salesData)
     } catch (error) {
       console.error("Error fetching sales:", error)
@@ -106,37 +87,99 @@ export default function VentasAdmin() {
     setIsDetailsDialogOpen(true)
   }
 
+  const handleStatusUpdate = async (saleId: string, newStatus: 'en_preparacion' | 'listo_entrega' | 'en_camino' | 'entregado' | 'cancelled') => {
+    try {
+      setUpdatingStatus(saleId)
+      const success = await PaymentService.updateOrderStatus(
+        saleId,
+        newStatus,
+        'admin@estilovale4.com'
+      )
+
+      if (success) {
+        // Actualizar el estado local
+        setSales(prevSales => 
+          prevSales.map(sale => 
+            sale.id === saleId ? { ...sale, estadoEnvio: newStatus } : sale
+          )
+        )
+      } else {
+        alert("Error al actualizar el estado del pedido")
+      }
+    } catch (error) {
+      console.error("Error updating order status:", error)
+      alert("Error al actualizar el estado del pedido")
+    } finally {
+      setUpdatingStatus(null)
+    }
+  }
+
+  const handleViewOrderDetails = (saleId: string) => {
+    router.push(`/admin/ventas/${saleId}`)
+  }
+
   // Función para obtener el estado en español y los estilos
-  const getEstadoDisplay = (estado: string) => {
-    switch (estado.toLowerCase()) {
-      case 'approved':
+  const getEstadoDisplay = (sale: Sale) => {
+    // Mostrar estado de envío por defecto, pero también mostrar estado de pago si es relevante
+    const estadoEnvio = sale.estadoEnvio || 'pendiente_envio'
+    const estadoPago = sale.estadoPago || 'pending'
+    
+    // Si el pago no está aprobado, mostrar estado de pago
+    if (estadoPago !== 'approved') {
+      switch (estadoPago) {
+        case 'pending':
+          return {
+            text: 'Pago Pendiente',
+            className: 'bg-yellow-100 text-yellow-800'
+          }
+        case 'rejected':
+          return {
+            text: 'Pago Rechazado',
+            className: 'bg-red-100 text-red-800'
+          }
+        case 'cancelled':
+          return {
+            text: 'Pago Cancelado',
+            className: 'bg-gray-100 text-gray-800'
+          }
+      }
+    }
+    
+    // Si el pago está aprobado, mostrar estado de envío
+    switch (estadoEnvio) {
+      case 'pendiente_envio':
         return {
-          text: 'Pago Aprobado',
+          text: 'Pendiente Envío',
+          className: 'bg-blue-100 text-blue-800'
+        }
+      case 'en_preparacion':
+        return {
+          text: 'En Preparación',
+          className: 'bg-orange-100 text-orange-800'
+        }
+      case 'listo_entrega':
+        return {
+          text: 'Listo para Entrega',
+          className: 'bg-purple-100 text-purple-800'
+        }
+      case 'en_camino':
+        return {
+          text: 'En Camino',
+          className: 'bg-indigo-100 text-indigo-800'
+        }
+      case 'entregado':
+        return {
+          text: 'Entregado',
           className: 'bg-green-100 text-green-800'
         }
-      case 'pending':
+      case 'cancelled':
         return {
-          text: 'Pendiente',
-          className: 'bg-yellow-100 text-yellow-800'
-        }
-      case 'rejected':
-        return {
-          text: 'Pago Rechazado',
-          className: 'bg-red-100 text-red-800'
-        }
-      case 'completado':
-        return {
-          text: 'Completado',
-          className: 'bg-green-100 text-green-800'
-        }
-      case 'pendiente':
-        return {
-          text: 'Pendiente',
-          className: 'bg-yellow-100 text-yellow-800'
+          text: 'Cancelado',
+          className: 'bg-gray-100 text-gray-800'
         }
       default:
         return {
-          text: estado,
+          text: 'Desconocido',
           className: 'bg-gray-100 text-gray-800'
         }
     }
@@ -224,25 +267,112 @@ export default function VentasAdmin() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getEstadoDisplay(sale.estado).className}`}
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getEstadoDisplay(sale).className}`}
                           >
-                            {getEstadoDisplay(sale.estado).text}
+                            {getEstadoDisplay(sale).text}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="flex space-x-2">
-                            <Button variant="outline" size="sm" onClick={() => handleViewDetails(sale)}>
-                              Ver detalles
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
-                              onClick={() => handleDeleteClick(sale)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Eliminar
-                            </Button>
+                          <div className="flex flex-col space-y-2">
+                            <div className="flex space-x-1">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => handleViewOrderDetails(sale.id)}
+                                className="flex items-center"
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Ver
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => handleViewDetails(sale)}
+                              >
+                                Detalles
+                              </Button>
+                            </div>
+                            
+                            {/* Botones de gestión de estado */}
+                            <div className="flex flex-wrap gap-1">
+                              {/* Solo mostrar botones si el pago está aprobado */}
+                              {sale.estadoPago === 'approved' && (
+                                <>
+                                  {sale.estadoEnvio === 'pendiente_envio' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(sale.id, 'en_preparacion')}
+                                  disabled={updatingStatus === sale.id}
+                                  className="text-xs px-2 py-1 h-6"
+                                >
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  Prep.
+                                </Button>
+                              )}
+                              
+                                  {sale.estadoEnvio === 'en_preparacion' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(sale.id, 'listo_entrega')}
+                                  disabled={updatingStatus === sale.id}
+                                  className="text-xs px-2 py-1 h-6"
+                                >
+                                  <Package className="h-3 w-3 mr-1" />
+                                  Listo
+                                </Button>
+                              )}
+                              
+                                  {sale.estadoEnvio === 'listo_entrega' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(sale.id, 'en_camino')}
+                                  disabled={updatingStatus === sale.id}
+                                  className="text-xs px-2 py-1 h-6"
+                                >
+                                  <Truck className="h-3 w-3 mr-1" />
+                                  Envío
+                                </Button>
+                              )}
+                              
+                                  {sale.estadoEnvio === 'en_camino' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(sale.id, 'entregado')}
+                                  disabled={updatingStatus === sale.id}
+                                  className="text-xs px-2 py-1 h-6"
+                                >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Entregado
+                                </Button>
+                              )}
+                              
+                                  {/* Botón de cancelar */}
+                                  {(sale.estadoEnvio === 'pendiente_envio' || sale.estadoEnvio === 'en_preparacion' || sale.estadoEnvio === 'listo_entrega') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(sale.id, 'cancelled')}
+                                  disabled={updatingStatus === sale.id}
+                                  className="text-xs px-2 py-1 h-6 text-red-600 hover:text-red-800"
+                                >
+                                  <X className="h-3 w-3 mr-1" />
+                                  Cancelar
+                                </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                            
+                            {updatingStatus === sale.id && (
+                              <div className="text-xs text-gray-500 flex items-center">
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Actualizando...
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -270,18 +400,37 @@ export default function VentasAdmin() {
               <div>
                 <p className="text-sm font-medium text-gray-500">Cliente</p>
                 <p className="text-lg">{selectedSale?.cliente}</p>
+                <p className="text-sm text-gray-600">{selectedSale?.email}</p>
+                <p className="text-sm text-gray-600">{selectedSale?.telefono}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Estado</p>
                 <span
-                  className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    selectedSale ? getEstadoDisplay(selectedSale.estado).className : ''
-                  }`}
-                >
-                  {selectedSale ? getEstadoDisplay(selectedSale.estado).text : ''}
+                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      selectedSale ? getEstadoDisplay(selectedSale).className : ''
+                    }`}
+                  >
+                    {selectedSale ? getEstadoDisplay(selectedSale).text : ''}
                 </span>
               </div>
             </div>
+
+            {/* Información de entrega */}
+            {selectedSale?.direccion && (
+              <div className="mb-4">
+                <p className="text-sm font-medium text-gray-500 mb-2">Información de Entrega</p>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-sm"><strong>Dirección:</strong> {selectedSale.direccion}</p>
+                  <p className="text-sm"><strong>Opción:</strong> {selectedSale.opcionEntrega === 'domicilio' ? 'Entrega a domicilio' : 'Retiro en local'}</p>
+                  {selectedSale.horarioEntrega && (
+                    <p className="text-sm"><strong>Horario:</strong> {selectedSale.horarioEntrega}</p>
+                  )}
+                  {selectedSale.comentarios && (
+                    <p className="text-sm"><strong>Comentarios:</strong> {selectedSale.comentarios}</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="mb-4">
               <p className="text-sm font-medium text-gray-500 mb-2">Productos</p>

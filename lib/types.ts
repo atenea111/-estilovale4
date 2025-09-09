@@ -33,6 +33,11 @@ export interface Sale {
   fecha: Date
   cliente: string
   email: string
+  telefono: string
+  direccion: string
+  opcionEntrega: 'domicilio' | 'retiro'
+  horarioEntrega?: string
+  comentarios?: string
   total: number
   costoEnvioTotal: number
   productos: Array<{
@@ -43,14 +48,25 @@ export interface Sale {
     subtotal: number
     costoEnvio: number
   }>
-  estado: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  // Estados de pago (manejados por MercadoPago)
+  estadoPago: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  // Estados de envío (manejados por el admin)
+  estadoEnvio: 'pendiente_envio' | 'en_preparacion' | 'listo_entrega' | 'en_camino' | 'entregado' | 'cancelled'
   paymentId?: string
   externalReference?: string
   webhookProcessed?: boolean
   webhookProcessedAt?: Date
+  // Fechas de estados de pago
   fechaAprobacion?: Date
   fechaRechazo?: Date
   fechaPendiente?: Date
+  // Fechas de estados de envío
+  fechaEnPreparacion?: Date
+  fechaListoEntrega?: Date
+  fechaEnCamino?: Date
+  fechaEntregado?: Date
+  mensajeAdmin?: string
+  administrador?: string
 }
 
 export interface StockMovement {
@@ -115,4 +131,24 @@ export interface StockValidationError {
 export interface StockValidationResult {
   valid: boolean
   errors: StockValidationError[]
+}
+
+// Tipos para el formulario de datos del cliente
+export interface CustomerFormData {
+  nombre: string
+  email: string
+  telefono: string
+  direccion: string
+  opcionEntrega: 'domicilio' | 'retiro'
+  horarioEntrega?: string
+  comentarios?: string
+}
+
+export interface CustomerFormErrors {
+  nombre?: string
+  email?: string
+  telefono?: string
+  direccion?: string
+  opcionEntrega?: string
+  horarioEntrega?: string
 }

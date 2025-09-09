@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Clock, Instagram, ShoppingBag, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore"
+import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore"
 
-export default function PaymentPending() {
+function PaymentPendingContent() {
   const searchParams = useSearchParams()
   const paymentId = searchParams.get('payment_id')
   const status = searchParams.get('status')
@@ -41,7 +41,7 @@ export default function PaymentPending() {
           await updateDoc(doc(db, 'ventas', saleDoc.id), {
             estado: 'pending',
             paymentId: paymentId,
-            fechaPendiente: new Date()
+            fechaPendiente: serverTimestamp()
           })
         }
       }
@@ -192,5 +192,20 @@ export default function PaymentPending() {
         </div>
       </footer>
     </div>
+  )
+}
+
+export default function PaymentPending() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#F5D3EF] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto"></div>
+          <p className="mt-4 text-black font-medium">Cargando...</p>
+        </div>
+      </div>
+    }>
+      <PaymentPendingContent />
+    </Suspense>
   )
 }

@@ -3,14 +3,15 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, Instagram, Minus, Plus, ShoppingBag, Trash2, User, AlertTriangle } from "lucide-react"
+import { ChevronLeft, Instagram, Minus, Plus, ShoppingBag, Trash2, User, AlertTriangle, ShoppingCart, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { initializeFirebase } from "@/lib/firebase"
 import { PaymentService } from "@/lib/payment-service"
-import type { CartItem, StockValidationError } from "@/lib/types"
+import { CustomerForm } from "@/components/customer-form"
+import type { CartItem, StockValidationError, CustomerFormData } from "@/lib/types"
 
 export default function Carrito() {
   const router = useRouter()
@@ -19,6 +20,9 @@ export default function Carrito() {
   const [stockErrors, setStockErrors] = useState<StockValidationError[]>([])
   const [isValidatingStock, setIsValidatingStock] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [customerData, setCustomerData] = useState<CustomerFormData | null>(null)
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [isFormValid, setIsFormValid] = useState(false)
 
   useEffect(() => {
     // Get cart items from localStorage
@@ -31,6 +35,13 @@ export default function Carrito() {
       validateStock()
     }
   }, [])
+
+  // Efecto para mostrar el formulario cuando hay productos y no hay datos del cliente
+  useEffect(() => {
+    if (cartItems.length > 0 && !customerData && !showCustomerForm) {
+      setShowCustomerForm(true)
+    }
+  }, [cartItems.length, customerData, showCustomerForm])
 
   const validateStock = async () => {
     if (cartItems.length === 0) return
@@ -95,9 +106,35 @@ export default function Carrito() {
     return getTotalPrice() + getTotalShipping()
   }
 
-  const handleCheckout = async () => {
+  const handleCustomerFormSubmit = (data: CustomerFormData) => {
+    setCustomerData(data)
+    setShowCustomerForm(false)
+    // No proceder automáticamente, esperar que el usuario haga clic en el botón principal
+  }
+
+  const handleFormChange = (isValid: boolean, data: CustomerFormData) => {
+    setIsFormValid(isValid)
+    if (isValid) {
+      setCustomerData(data)
+    }
+  }
+
+  const handleCheckout = async (customerFormData?: CustomerFormData) => {
     if (cartItems.length === 0) {
       alert("El carrito está vacío")
+      return
+    }
+
+    // Si no hay datos del cliente, mostrar el formulario
+    if (!customerFormData && !customerData) {
+      setShowCustomerForm(true)
+      return
+    }
+
+    // Usar los datos del cliente del parámetro o del estado
+    const clientData = customerFormData || customerData
+    if (!clientData) {
+      alert("Error: No se encontraron los datos del cliente")
       return
     }
 
@@ -110,6 +147,7 @@ export default function Carrito() {
     setIsProcessingPayment(true)
     console.log("Iniciando checkout con MercadoPago...")
     console.log("Productos en carrito:", cartItems)
+    console.log("Datos del cliente:", clientData)
 
     try {
       // Crear preferencia de pago
@@ -126,9 +164,13 @@ export default function Carrito() {
       const preference = await PaymentService.createPaymentPreference({
         items: paymentItems,
         payer: {
-          email: 'cliente@example.com', // En una implementación real, esto vendría de un formulario
-          name: 'Cliente',
-          surname: 'EstiloVale4'
+          email: clientData.email,
+          name: clientData.nombre.split(' ')[0] || clientData.nombre,
+          surname: clientData.nombre.split(' ').slice(1).join(' ') || 'Cliente',
+          phone: {
+            area_code: clientData.telefono.replace(/\D/g, '').substring(0, 4),
+            number: clientData.telefono.replace(/\D/g, '').substring(4)
+          }
         },
         auto_return: 'approved',
         external_reference: `sale_${Date.now()}`
@@ -139,9 +181,14 @@ export default function Carrito() {
       if (preference.success && preference.paymentId) {
         // Registrar la venta como pendiente
         const saleId = await PaymentService.registerSale({
-          cliente: 'Cliente EstiloVale4',
-          email: 'cliente@example.com',
-          total: getTotalPrice(),
+          cliente: clientData.nombre,
+          email: clientData.email,
+          telefono: clientData.telefono,
+          direccion: clientData.direccion,
+          opcionEntrega: clientData.opcionEntrega,
+          horarioEntrega: clientData.horarioEntrega,
+          comentarios: clientData.comentarios,
+          total: getTotalPrice() + getTotalShipping(),
           costoEnvioTotal: getTotalShipping(),
           productos: cartItems.map(item => ({
             id: item.id,
@@ -151,7 +198,8 @@ export default function Carrito() {
             subtotal: item.precio * item.quantity,
             costoEnvio: item.costoEnvio || 0
           })),
-          estado: 'pending',
+          estadoPago: 'pending',
+          estadoEnvio: 'pendiente_envio',
           paymentId: preference.paymentId, // Usar el paymentId de la respuesta
           externalReference: `sale_${Date.now()}`
         })
@@ -257,143 +305,273 @@ export default function Carrito() {
             </div>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Cart Items */}
-            <div className="md:col-span-2">
-              <Card className="bg-white overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold text-black">Productos ({getTotalItems()})</h2>
-                    <Button
-                      variant="ghost"
-                      onClick={clearCart}
-                      className="text-red-600 hover:text-red-800 hover:bg-red-50"
-                    >
-                      Vaciar carrito
-                    </Button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {cartItems.map((item) => (
-                      <div key={item.id}>
-                        <div className="flex items-center gap-4">
-                          <div className="w-20 h-20 bg-white rounded overflow-hidden flex-shrink-0">
-                            <img
-                              src={item.imagen || "/placeholder.svg?height=80&width=80"}
-                              alt={item.nombre}
-                              className="w-full h-full object-contain"
-                            />
-                          </div>
-
-                          <div className="flex-1">
-                            <h3 className="font-medium text-black">{item.nombre}</h3>
-                            <p className="text-black font-bold mt-1">${item.precio.toLocaleString("es-AR")}</p>
-                          </div>
-
-                          <div className="flex items-center">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              disabled={item.quantity <= 1}
-                              className="h-8 w-8"
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="mx-3 text-black w-6 text-center">{item.quantity}</span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="h-8 w-8"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-
-                          <div className="text-right">
-                            <p className="font-bold text-black">
-                              ${(item.precio * item.quantity).toLocaleString("es-AR")}
-                            </p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeItem(item.id)}
-                              className="text-red-600 hover:text-red-800 hover:bg-transparent p-0 h-auto mt-1"
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              <span className="text-xs">Eliminar</span>
-                            </Button>
-                          </div>
-                        </div>
-                        <Separator className="mt-6" />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Header del Carrito */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-gray-900">Carrito de Compras</h1>
+              <p className="text-gray-600 mt-2">Revisa tus productos antes de proceder al pago</p>
             </div>
 
-            {/* Order Summary */}
-            <div className="md:col-span-1">
-              <Card className="bg-white overflow-hidden sticky top-24">
-                <CardContent className="p-6">
-                  <h2 className="text-xl font-semibold text-black mb-6">Resumen del Pedido</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Columna Principal - Formulario y Productos */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Formulario del Cliente */}
+                {showCustomerForm && (
+                  <Card className="bg-white shadow-sm border-0">
+                    <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+                      <CardTitle className="flex items-center text-xl font-semibold text-gray-800">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                          <span className="text-blue-600 text-sm">📝</span>
+                        </div>
+                        Completa tus datos de entrega
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <p className="text-gray-600 mb-6">
+                        Para continuar con tu compra, necesitamos algunos datos para la entrega de tu pedido.
+                      </p>
+                      <CustomerForm 
+                        onSubmit={handleCustomerFormSubmit}
+                        loading={isProcessingPayment}
+                        onFormChange={handleFormChange}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
 
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal productos</span>
-                      <span className="font-medium text-black">${getTotalPrice().toLocaleString("es-AR")}</span>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Costo de envío</span>
-                      <span className="font-medium text-black">${getTotalShipping().toLocaleString("es-AR")}</span>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Cantidad de productos</span>
-                      <span className="font-medium text-black">{getTotalItems()}</span>
-                    </div>
-
-                    <Separator />
-
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total</span>
-                      <span>${getGrandTotal().toLocaleString("es-AR")}</span>
-                    </div>
-                  </div>
-
-                  {/* Mostrar errores de stock */}
-                  {stockErrors.length > 0 && (
-                    <Alert className="mt-4 border-red-200 bg-red-50">
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800">
-                        <div className="font-semibold mb-2">Productos sin stock suficiente:</div>
-                        {stockErrors.map((error, index) => (
-                          <div key={index} className="text-sm">
-                            • {error.productName}: solicitado {error.requested}, disponible {error.available}
+                {/* Datos del Cliente Confirmados */}
+                {customerData && !showCustomerForm && (
+                  <Card className="bg-white shadow-sm border-0">
+                    <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
+                      <CardTitle className="flex items-center text-xl font-semibold text-gray-800">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                          <span className="text-green-600 text-sm">✅</span>
+                        </div>
+                        Datos de Entrega Confirmados
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Cliente</p>
+                            <p className="text-lg font-semibold text-gray-900">{customerData.nombre}</p>
                           </div>
-                        ))}
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Email</p>
+                            <p className="text-lg font-semibold text-gray-900">{customerData.email}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Teléfono</p>
+                            <p className="text-lg font-semibold text-gray-900">{customerData.telefono}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Opción de Entrega</p>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {customerData.opcionEntrega === 'domicilio' ? 'Entrega a domicilio' : 'Retiro en local'}
+                            </p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Dirección</p>
+                            <p className="text-lg font-semibold text-gray-900">{customerData.direccion}</p>
+                          </div>
+                          {customerData.horarioEntrega && (
+                            <div className="bg-gray-50 rounded-lg p-4">
+                              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Horario</p>
+                              <p className="text-lg font-semibold text-gray-900">{customerData.horarioEntrega}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {customerData.comentarios && (
+                        <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Comentarios</p>
+                          <p className="text-lg font-semibold text-gray-900 mt-2">{customerData.comentarios}</p>
+                        </div>
+                      )}
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setShowCustomerForm(true)}
+                        className="mt-6 w-full"
+                      >
+                        Modificar datos
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
 
-                  <Button 
-                    onClick={handleCheckout} 
-                    className="w-full mt-6 bg-black text-white hover:bg-gray-800"
-                    disabled={stockErrors.length > 0 || isValidatingStock || isProcessingPayment}
-                  >
-                    {isProcessingPayment ? 'Procesando pago...' : 
-                     isValidatingStock ? 'Validando stock...' : 
-                     'Finalizar compra con MercadoPago'}
-                  </Button>
+                {/* Productos del Carrito */}
+                <Card className="bg-white shadow-sm border-0">
+                  <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center text-xl font-semibold text-gray-800">
+                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
+                          <ShoppingCart className="h-4 w-4 text-gray-600" />
+                        </div>
+                        Productos ({cartItems.length})
+                      </CardTitle>
+                      <Button
+                        variant="ghost"
+                        onClick={clearCart}
+                        className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Vaciar carrito
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-gray-100">
+                      {cartItems.map((item) => (
+                        <div key={item.id} className="p-6 hover:bg-gray-50/50 transition-colors">
+                          <div className="flex items-center gap-6">
+                            {/* Imagen del Producto */}
+                            <div className="w-24 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                              <img
+                                src={item.imagen || "/placeholder.svg?height=96&width=96"}
+                                alt={item.nombre}
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
 
-                  <p className="text-xs text-gray-500 mt-4 text-center">
-                    Al finalizar la compra, serás redirigido a MercadoPago para completar tu pago de forma segura.
-                  </p>
-                </CardContent>
-              </Card>
+                            {/* Información del Producto */}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.nombre}</h3>
+                              <div className="flex items-center space-x-6 text-sm text-gray-600">
+                                <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                  <span className="font-medium">Precio unitario:</span>
+                                  <span className="ml-2 font-bold text-gray-900">${item.precio.toLocaleString("es-AR")}</span>
+                                </div>
+                                {item.costoEnvio > 0 && (
+                                  <div className="bg-gray-50 rounded-lg px-3 py-2">
+                                    <span className="font-medium">Envío:</span>
+                                    <span className="ml-2 font-bold text-gray-900">${item.costoEnvio.toLocaleString("es-AR")}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Controles de Cantidad */}
+                            <div className="flex items-center space-x-3">
+                              <div className="flex items-center border border-gray-200 rounded-lg">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                  disabled={item.quantity <= 1}
+                                  className="h-10 w-10 hover:bg-gray-100"
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <span className="px-4 py-2 text-lg font-semibold text-gray-900 min-w-[3rem] text-center">
+                                  {item.quantity}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                  className="h-10 w-10 hover:bg-gray-100"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Precio Total y Acciones */}
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-gray-900 mb-2">
+                                ${(item.precio * item.quantity).toLocaleString("es-AR")}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeItem(item.id)}
+                                className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Eliminar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Columna Lateral - Resumen del Pedido */}
+              <div className="lg:col-span-1">
+                <Card className="bg-white shadow-sm border-0 sticky top-6">
+                  <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                    <CardTitle className="flex items-center text-xl font-semibold text-gray-800">
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
+                        <Receipt className="h-4 w-4 text-gray-600" />
+                      </div>
+                      Resumen del Pedido
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-gray-600">Subtotal productos</span>
+                        <span className="font-semibold text-gray-900">${getTotalPrice().toLocaleString("es-AR")}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-gray-600">Costo de envío</span>
+                        <span className="font-semibold text-gray-900">${getTotalShipping().toLocaleString("es-AR")}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-gray-600">Cantidad de productos</span>
+                        <span className="font-semibold text-gray-900">{getTotalItems()}</span>
+                      </div>
+
+                      <Separator className="my-4" />
+
+                      <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-4">
+                        <span className="text-lg font-bold text-gray-900">Total</span>
+                        <span className="text-2xl font-bold text-gray-900">${getGrandTotal().toLocaleString("es-AR")}</span>
+                      </div>
+                    </div>
+
+                    {/* Mostrar errores de stock */}
+                    {stockErrors.length > 0 && (
+                      <Alert className="mt-6 border-red-200 bg-red-50">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-red-800">
+                          <div className="font-semibold mb-2">Productos sin stock suficiente:</div>
+                          {stockErrors.map((error, index) => (
+                            <div key={index} className="text-sm">
+                              • {error.productName}: solicitado {error.requested}, disponible {error.available}
+                            </div>
+                          ))}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    <Button 
+                      onClick={() => handleCheckout()} 
+                      className="w-full mt-6 bg-black text-white hover:bg-gray-800 h-12 text-lg font-semibold"
+                      disabled={stockErrors.length > 0 || isValidatingStock || isProcessingPayment || (showCustomerForm && !isFormValid)}
+                    >
+                      {isProcessingPayment ? 'Procesando pago...' : 
+                       isValidatingStock ? 'Validando stock...' :
+                       showCustomerForm ? (isFormValid ? 'Completar datos y proceder al pago' : 'Completa el formulario para continuar') :
+                       'Finalizar compra con MercadoPago'}
+                    </Button>
+
+                    <p className="text-xs text-gray-500 mt-3 text-center">
+                      {showCustomerForm ? 
+                        (isFormValid ? 'Formulario completo. Puedes proceder al pago.' : 'Completa todos los campos obligatorios para continuar.') : 
+                        'Los datos están completos. Puedes proceder al pago.'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         )}
