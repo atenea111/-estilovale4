@@ -56,11 +56,13 @@ export function CustomerForm({ onSubmit, loading = false, initialData, onFormCha
       newErrors.telefono = "El teléfono no es válido"
     }
 
-    // Validar dirección
-    if (!formData.direccion.trim()) {
-      newErrors.direccion = "La dirección es obligatoria"
-    } else if (formData.direccion.trim().length < 10) {
-      newErrors.direccion = "La dirección debe ser más específica"
+    // Validar dirección (solo obligatoria si es entrega a domicilio)
+    if (formData.opcionEntrega === "domicilio") {
+      if (!formData.direccion.trim()) {
+        newErrors.direccion = "La dirección es obligatoria para entrega a domicilio"
+      } else if (formData.direccion.trim().length < 10) {
+        newErrors.direccion = "La dirección debe ser más específica"
+      }
     }
 
     // Validar horario si es entrega a domicilio
@@ -80,7 +82,15 @@ export function CustomerForm({ onSubmit, loading = false, initialData, onFormCha
   }
 
   const handleInputChange = (field: keyof CustomerFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    const newData = { ...formData, [field]: value }
+    
+    // Si cambia la opción de entrega a "retiro", establecer la dirección del local
+    if (field === "opcionEntrega" && value === "retiro") {
+      newData.direccion = "Manuel García 1867, Piso 01, Dep 08"
+    }
+    
+    setFormData(newData)
+    
     // Limpiar error del campo cuando el usuario empiece a escribir
     if (errors[field as keyof CustomerFormErrors]) {
       setErrors(prev => ({ ...prev, [field]: undefined }))
@@ -204,19 +214,36 @@ export function CustomerForm({ onSubmit, loading = false, initialData, onFormCha
           {/* Dirección */}
           <div className="space-y-2">
             <Label htmlFor="direccion" className="text-black font-medium">
-              Dirección completa *
+              {formData.opcionEntrega === "domicilio" ? "Dirección completa *" : "Dirección de entrega"}
             </Label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Textarea
-                id="direccion"
-                placeholder="Calle, número, barrio, ciudad, código postal"
-                value={formData.direccion}
-                onChange={(e) => handleInputChange("direccion", e.target.value)}
-                className={`pl-10 min-h-[80px] ${errors.direccion ? "border-red-500" : ""}`}
-                disabled={loading}
-              />
-            </div>
+            {formData.opcionEntrega === "retiro" ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <MapPin className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="text-blue-800 font-medium">Retiro en local</p>
+                    <p className="text-blue-700 text-sm mt-1">
+                      Manuel García 1867, Piso 01, Dep 08
+                    </p>
+                    <p className="text-blue-600 text-xs mt-2">
+                      Te contactaremos para coordinar el retiro
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <MapPin className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Textarea
+                  id="direccion"
+                  placeholder="Calle, número, barrio, ciudad, código postal"
+                  value={formData.direccion}
+                  onChange={(e) => handleInputChange("direccion", e.target.value)}
+                  className={`pl-10 min-h-[80px] ${errors.direccion ? "border-red-500" : ""}`}
+                  disabled={loading}
+                />
+              </div>
+            )}
             {errors.direccion && (
               <Alert className="border-red-200 bg-red-50">
                 <AlertCircle className="h-4 w-4 text-red-600" />

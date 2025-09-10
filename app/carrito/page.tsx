@@ -375,7 +375,12 @@ export default function Carrito() {
                           </div>
                           <div className="bg-gray-50 rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Dirección</p>
-                            <p className="text-lg font-semibold text-gray-900">{customerData.direccion}</p>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {customerData.opcionEntrega === 'retiro' 
+                                ? 'Manuel García 1867, Piso 01, Dep 08 (Retiro en local)'
+                                : customerData.direccion
+                              }
+                            </p>
                           </div>
                           {customerData.horarioEntrega && (
                             <div className="bg-gray-50 rounded-lg p-4">

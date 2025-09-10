@@ -3,11 +3,11 @@
 import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { CheckCircle, Instagram, ShoppingBag, User } from "lucide-react"
+import { CheckCircle, Instagram, ShoppingBag, User, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore"
 import { PaymentService } from "@/lib/payment-service"
 
 function PaymentSuccessContent() {
@@ -43,7 +43,8 @@ function PaymentSuccessContent() {
           
           // Actualizar estado de la venta
           await updateDoc(doc(db, 'ventas', sale.id), {
-            estado: 'approved',
+            estadoPago: 'approved',
+            estadoEnvio: 'pendiente_envio',
             paymentId: paymentId,
             fechaAprobacion: serverTimestamp()
           })
@@ -203,10 +204,35 @@ function PaymentSuccessContent() {
             
             {saleData && (
               <div className="bg-gray-50 p-4 rounded-lg mb-6 text-left">
-                <h3 className="font-semibold text-black mb-2">Resumen de tu compra:</h3>
-                <p className="text-sm text-gray-600">ID de venta: #{saleData.id.substring(0, 8)}</p>
-                <p className="text-sm text-gray-600">Total: ${(saleData.total + saleData.costoEnvioTotal).toLocaleString('es-AR')}</p>
-                <p className="text-sm text-gray-600">Productos: {saleData.productos.length}</p>
+                <h3 className="font-semibold text-black mb-3">Resumen de tu compra:</h3>
+                <div className="space-y-2 text-sm">
+                  <p className="text-gray-600">ID de venta: #{saleData.id.substring(0, 8)}</p>
+                  <p className="text-gray-600">Total: ${(saleData.total + saleData.costoEnvioTotal).toLocaleString('es-AR')}</p>
+                  <p className="text-gray-600">Productos: {saleData.productos.length}</p>
+                  
+                  {/* Información de entrega */}
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="flex items-start space-x-2">
+                      <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
+                      <div>
+                        <p className="text-gray-600 font-medium">
+                          {saleData.opcionEntrega === 'domicilio' ? 'Entrega a domicilio' : 'Retiro en local'}
+                        </p>
+                        <p className="text-gray-600 text-xs mt-1">
+                          {saleData.opcionEntrega === 'retiro' 
+                            ? 'Manuel García 1867, Piso 01, Dep 08'
+                            : saleData.direccion
+                          }
+                        </p>
+                        {saleData.opcionEntrega === 'retiro' && (
+                          <p className="text-blue-600 text-xs mt-1">
+                            Te contactaremos para coordinar el retiro
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

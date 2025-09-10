@@ -250,14 +250,24 @@ export class PaymentService {
 
       const paymentId = notificationData.data.id
       
+      // Primero obtener el estado real del pago desde MercadoPago
+      const paymentStatus = await this.getRealPaymentStatus(paymentId)
+      console.log('Estado del pago desde MercadoPago:', paymentStatus)
+      
+      // Solo procesar si el pago está realmente aprobado
+      if (paymentStatus !== 'approved') {
+        console.log(`Pago ${paymentId} no está aprobado (estado: ${paymentStatus}), ignorando`)
+        return true // Retornar true para confirmar a MercadoPago
+      }
+      
       // Verificar si ya procesamos este webhook específico
       const { db } = await initializeFirebase()
       const webhookLogRef = collection(db, 'webhook_logs')
-      const webhookQuery = query(webhookLogRef, where('paymentId', '==', paymentId))
+      const webhookQuery = query(webhookLogRef, where('paymentId', '==', paymentId), where('status', '==', 'completed'))
       const webhookSnapshot = await getDocs(webhookQuery)
       
       if (!webhookSnapshot.empty) {
-        console.log(`⚠️ Webhook ya procesado para payment ${paymentId}, ignorando duplicado`)
+        console.log(`⚠️ Webhook ya procesado completamente para payment ${paymentId}, ignorando duplicado`)
         
         // Confirmar notificación a MercadoPago para duplicados también
         await this.confirmNotificationToMercadoPago(paymentId)
