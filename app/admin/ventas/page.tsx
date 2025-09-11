@@ -432,6 +432,19 @@ export default function VentasAdmin() {
               </div>
             )}
 
+            {/* Información del cupón si fue aplicado */}
+            {selectedSale?.cuponAplicado && (
+              <div className="mb-4">
+                <p className="text-sm font-medium text-gray-500 mb-2">Cupón Aplicado</p>
+                <div className="bg-green-50 p-3 rounded-md border border-green-200">
+                  <p className="text-sm"><strong>Código:</strong> {selectedSale.cuponAplicado.codigo}</p>
+                  <p className="text-sm"><strong>Descuento:</strong> {selectedSale.cuponAplicado.descuento}%</p>
+                  <p className="text-sm"><strong>Monto descontado:</strong> ${selectedSale.cuponAplicado.montoDescuento.toLocaleString("es-AR")}</p>
+                  <p className="text-sm"><strong>Monto original:</strong> ${selectedSale.cuponAplicado.montoOriginal.toLocaleString("es-AR")}</p>
+                </div>
+              </div>
+            )}
+
             <div className="mb-4">
               <p className="text-sm font-medium text-gray-500 mb-2">Productos</p>
               <div className="rounded-md border">

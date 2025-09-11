@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { initializeFirebase } from "@/lib/firebase"
 import { PaymentService } from "@/lib/payment-service"
 import { CustomerForm } from "@/components/customer-form"
-import type { CartItem, StockValidationError, CustomerFormData } from "@/lib/types"
+import { CouponForm } from "@/components/coupon-form"
+import type { CartItem, StockValidationError, CustomerFormData, Coupon } from "@/lib/types"
 
 export default function Carrito() {
   const router = useRouter()
@@ -23,6 +24,8 @@ export default function Carrito() {
   const [customerData, setCustomerData] = useState<CustomerFormData | null>(null)
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [isFormValid, setIsFormValid] = useState(false)
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null)
+  const [discountAmount, setDiscountAmount] = useState(0)
 
   useEffect(() => {
     // Get cart items from localStorage
@@ -103,7 +106,8 @@ export default function Carrito() {
   }
 
   const getGrandTotal = () => {
-    return getTotalPrice() + getTotalShipping()
+    const total = getTotalPrice() + getTotalShipping()
+    return total - discountAmount
   }
 
   const handleCustomerFormSubmit = (data: CustomerFormData) => {
@@ -117,6 +121,16 @@ export default function Carrito() {
     if (isValid) {
       setCustomerData(data)
     }
+  }
+
+  const handleCouponApplied = (coupon: Coupon, discount: number) => {
+    setAppliedCoupon(coupon)
+    setDiscountAmount(discount)
+  }
+
+  const handleCouponRemoved = () => {
+    setAppliedCoupon(null)
+    setDiscountAmount(0)
   }
 
   const handleCheckout = async (customerFormData?: CustomerFormData) => {
@@ -188,7 +202,7 @@ export default function Carrito() {
           opcionEntrega: clientData.opcionEntrega,
           horarioEntrega: clientData.horarioEntrega,
           comentarios: clientData.comentarios,
-          total: getTotalPrice() + getTotalShipping(),
+          total: getGrandTotal(), // Usar el total con descuento aplicado
           costoEnvioTotal: getTotalShipping(),
           productos: cartItems.map(item => ({
             id: item.id,
@@ -198,6 +212,13 @@ export default function Carrito() {
             subtotal: item.precio * item.quantity,
             costoEnvio: item.costoEnvio || 0
           })),
+          // Información del cupón si fue aplicado
+          cuponAplicado: appliedCoupon ? {
+            codigo: appliedCoupon.nombre,
+            descuento: appliedCoupon.descuento,
+            montoDescuento: discountAmount,
+            montoOriginal: getTotalPrice() + getTotalShipping()
+          } : undefined,
           estadoPago: 'pending',
           estadoEnvio: 'pendiente_envio',
           paymentId: preference.paymentId, // Usar el paymentId de la respuesta
@@ -407,6 +428,15 @@ export default function Carrito() {
                   </Card>
                 )}
 
+                {/* Cupón de Descuento */}
+                <CouponForm
+                  onCouponApplied={handleCouponApplied}
+                  onCouponRemoved={handleCouponRemoved}
+                  appliedCoupon={appliedCoupon}
+                  discountAmount={discountAmount}
+                  totalAmount={getTotalPrice() + getTotalShipping()}
+                />
+
                 {/* Productos del Carrito */}
                 <Card className="bg-white shadow-sm border-0">
                   <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
@@ -529,6 +559,13 @@ export default function Carrito() {
                         <span className="text-gray-600">Costo de envío</span>
                         <span className="font-semibold text-gray-900">${getTotalShipping().toLocaleString("es-AR")}</span>
                       </div>
+
+                      {appliedCoupon && (
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-gray-600">Descuento ({appliedCoupon.nombre})</span>
+                          <span className="font-semibold text-green-600">-${discountAmount.toLocaleString("es-AR")}</span>
+                        </div>
+                      )}
 
                       <div className="flex justify-between items-center py-2">
                         <span className="text-gray-600">Cantidad de productos</span>

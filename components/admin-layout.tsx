@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { BarChart3, Heart, Home, LogOut, Package, ShoppingBag, Tag, Warehouse } from "lucide-react"
+import { BarChart3, Heart, Home, LogOut, Package, ShoppingBag, Tag, Warehouse, Percent } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   SidebarProvider,
@@ -147,6 +147,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, activeSectio
               </SidebarMenuItem>
 
               <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => router.push("/admin/cupones")}
+                  isActive={activeSection === "coupons"}
+                >
+                  <Percent className="h-5 w-5" />
+                  <span>Cupones</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => router.push("/")}>
                   <Home className="h-5 w-5" />
                   <span>Ver Tienda</span>
@@ -180,6 +190,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, activeSectio
                 {activeSection === "orders" && "Gestión de Ventas"}
                 {activeSection === "testimonials" && "Gestión de Testimonios"}
                 {activeSection === "stock" && "Gestión de Stock"}
+                {activeSection === "coupons" && "Gestión de Cupones"}
               </h1>
             </div>
             <div>

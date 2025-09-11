@@ -10,7 +10,8 @@ import type {
   Sale, 
   StockMovement,
   StockValidationError,
-  StockValidationResult
+  StockValidationResult,
+  Coupon
 } from './types'
 
 // Configuración de MercadoPago desde variables de entorno
@@ -384,6 +385,17 @@ export class PaymentService {
           sale.productos.map((p: any) => ({ id: p.id, cantidad: p.cantidad }))
         )
 
+        // Procesar cupón si fue aplicado
+        if (sale.cuponAplicado) {
+          await this.processCouponUsage(
+            sale.id,
+            sale.cuponAplicado.codigo,
+            sale.cliente,
+            sale.cuponAplicado.montoOriginal,
+            sale.cuponAplicado.montoDescuento
+          )
+        }
+
         // Actualizar el log del webhook como completado
         const webhookLogQuery = query(collection(db, 'webhook_logs'), where('paymentId', '==', paymentId))
         const webhookLogSnapshot = await getDocs(webhookLogQuery)
@@ -677,6 +689,55 @@ export class PaymentService {
     } catch (error) {
       console.error('Error obteniendo ventas:', error)
       return []
+    }
+  }
+
+  /**
+   * Procesa el uso de un cupón después de una venta exitosa
+   */
+  static async processCouponUsage(
+    saleId: string,
+    couponCode: string,
+    cliente: string,
+    montoOriginal: number,
+    montoDescuento: number
+  ): Promise<boolean> {
+    try {
+      const { db } = await initializeFirebase()
+      
+      // Buscar el cupón por código
+      const couponQuery = query(collection(db, 'cupones'), where('nombre', '==', couponCode.toUpperCase()))
+      const couponSnapshot = await getDocs(couponQuery)
+      
+      if (couponSnapshot.empty) {
+        console.error('Cupón no encontrado:', couponCode)
+        return false
+      }
+      
+      const couponDoc = couponSnapshot.docs[0]
+      const couponData = couponDoc.data()
+      
+      // Registrar el uso del cupón
+      await addDoc(collection(db, 'couponUsages'), {
+        couponId: couponDoc.id,
+        saleId: saleId,
+        cliente: cliente,
+        fechaUso: serverTimestamp(),
+        descuentoAplicado: couponData.descuento,
+        montoOriginal: montoOriginal,
+        montoDescuento: montoDescuento
+      })
+      
+      // Incrementar el contador de usos del cupón
+      await updateDoc(doc(db, 'cupones', couponDoc.id), {
+        usosActuales: (couponData.usosActuales || 0) + 1
+      })
+      
+      console.log(`Cupón ${couponCode} procesado exitosamente para venta ${saleId}`)
+      return true
+    } catch (error) {
+      console.error('Error procesando uso de cupón:', error)
+      return false
     }
   }
 

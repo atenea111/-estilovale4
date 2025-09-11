@@ -48,6 +48,13 @@ export interface Sale {
     subtotal: number
     costoEnvio: number
   }>
+  // Información del cupón aplicado
+  cuponAplicado?: {
+    codigo: string
+    descuento: number
+    montoDescuento: number
+    montoOriginal: number
+  }
   // Estados de pago (manejados por MercadoPago)
   estadoPago: 'pending' | 'approved' | 'rejected' | 'cancelled'
   // Estados de envío (manejados por el admin)
@@ -151,4 +158,28 @@ export interface CustomerFormErrors {
   direccion?: string
   opcionEntrega?: string
   horarioEntrega?: string
+}
+
+// Tipos para cupones de descuento
+export interface Coupon {
+  id: string
+  nombre: string
+  descuento: number // Porcentaje de descuento (0-100)
+  activo: boolean
+  fechaCreacion: Date
+  fechaVencimiento?: Date
+  limiteUsos?: number
+  usosActuales: number
+  descripcion?: string
+}
+
+export interface CouponUsage {
+  id: string
+  couponId: string
+  saleId: string
+  cliente: string
+  fechaUso: Date
+  descuentoAplicado: number
+  montoOriginal: number
+  montoDescuento: number
 }
