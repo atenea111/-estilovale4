@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
 import { collection, doc, getDoc, getDocs } from "firebase/firestore"
+import { PublicLayout } from "@/components/public-layout"
 
 interface Product {
   id: string
@@ -161,7 +162,8 @@ export default function ProductoDetalle() {
   const productCategories = categories.filter((category) => product.categorias?.includes(category.id))
 
   return (
-    <div className="min-h-screen bg-[#F5D3EF]">
+    <PublicLayout>
+      <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -378,6 +380,7 @@ export default function ProductoDetalle() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </PublicLayout>
   )
 }

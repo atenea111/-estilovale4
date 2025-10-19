@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { initializeFirebase } from "@/lib/firebase"
 import { collection, getDocs } from "firebase/firestore"
+import { PublicLayout } from "@/components/public-layout"
 
 interface Product {
   id: string
@@ -109,7 +110,8 @@ export default function Catalogo() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5D3EF]">
+    <PublicLayout>
+      <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-2 flex items-center justify-between">
@@ -315,7 +317,8 @@ export default function Catalogo() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </PublicLayout>
   )
 }
 
