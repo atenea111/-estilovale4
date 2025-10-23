@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
 import { collection, getDocs, query, limit, orderBy } from "firebase/firestore"
-import { PublicLayout } from "@/components/public-layout"
 
 interface Category {
   id: string
@@ -96,8 +95,7 @@ export default function Home() {
   }, [])
 
   return (
-    <PublicLayout>
-      <div className="min-h-screen bg-[#F5D3EF]">
+    <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-2 flex items-center justify-between">
@@ -295,8 +293,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
-      </div>
-    </PublicLayout>
+    </div>
   )
 }
 

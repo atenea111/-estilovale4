@@ -17,7 +17,6 @@ import {
   SidebarMenuButton,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { DatabaseAlert } from "@/components/database-alert"
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -202,10 +201,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, activeSectio
             </div>
           </header>
 
-          <main className="p-6">
-            <DatabaseAlert />
-            {children}
-          </main>
+          <main className="p-6">{children}</main>
         </div>
       </div>
     </SidebarProvider>

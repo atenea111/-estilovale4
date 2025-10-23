@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Instagram, ShoppingBag, User } from "lucide-react"
-import { PublicLayout } from "@/components/public-layout"
 
 export default function QuienesSomos() {
   const [cartCount, setCartCount] = useState(0)
@@ -15,8 +14,7 @@ export default function QuienesSomos() {
   }, [])
 
   return (
-    <PublicLayout>
-      <div className="min-h-screen bg-[#F5D3EF]">
+    <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-2 flex items-center justify-between">
@@ -150,7 +148,6 @@ export default function QuienesSomos() {
           </div>
         </div>
       </footer>
-      </div>
-    </PublicLayout>
+    </div>
   )
 }

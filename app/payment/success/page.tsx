@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { initializeFirebase } from "@/lib/firebase"
 import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore"
 import { PaymentService } from "@/lib/payment-service"
-import { PublicLayout } from "@/components/public-layout"
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams()
@@ -152,8 +151,7 @@ function PaymentSuccessContent() {
   }
 
   return (
-    <PublicLayout>
-      <div className="min-h-screen bg-[#F5D3EF]">
+    <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-2 flex items-center justify-between">
@@ -299,8 +297,7 @@ function PaymentSuccessContent() {
           </div>
         </div>
       </footer>
-      </div>
-    </PublicLayout>
+    </div>
   )
 }
 

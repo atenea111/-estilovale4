@@ -13,7 +13,6 @@ import { PaymentService } from "@/lib/payment-service"
 import { CustomerForm } from "@/components/customer-form"
 import { CouponForm } from "@/components/coupon-form"
 import type { CartItem, StockValidationError, CustomerFormData, Coupon } from "@/lib/types"
-import { PublicLayout } from "@/components/public-layout"
 
 export default function Carrito() {
   const router = useRouter()
@@ -259,8 +258,7 @@ export default function Carrito() {
   }
 
   return (
-    <PublicLayout>
-      <div className="min-h-screen bg-[#F5D3EF]">
+    <div className="min-h-screen bg-[#F5D3EF]">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#F5D3EF] shadow-sm">
         <div className="container mx-auto px-4 py-2 flex items-center justify-between">
@@ -670,8 +668,7 @@ export default function Carrito() {
           </div>
         </div>
       </footer>
-      </div>
-    </PublicLayout>
+    </div>
   )
 }
 
